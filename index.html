@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#e8eef5" />
+    <meta name="description" content="오늘의 일기를 적고 대화로 내일 할 일을 정한 뒤, 이메일로 받아보세요." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <title>하루, 내일</title>
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="brand" href="/" aria-label="하루, 내일 홈">
+          <span class="brand-mark" aria-hidden="true">✳</span>
+          <span>하루, 내일</span>
+        </a>
+        <div class="account">
+          <span id="account-email"></span>
+          <button id="sign-out" class="text-button" type="button" hidden>로그아웃</button>
+        </div>
+      </header>
+
+      <main>
+        <div class="intro">
+          <p id="today-date" class="date-line"></p>
+          <h1>오늘을 적고,<br />내일을 정해요.</h1>
+          <p class="intro-copy">하루를 돌아본 뒤, 대화로 내일의 한 걸음을 고릅니다. 정리한 내용은 메일로 보내드려요.</p>
+        </div>
+
+        <ol class="steps" aria-label="진행 단계">
+          <li data-step="email"><span>1</span> 이메일 확인</li>
+          <li data-step="diary"><span>2</span> 일기 작성</li>
+          <li data-step="chat"><span>3</span> 내일 계획</li>
+          <li data-step="preview"><span>4</span> 메일 발송</li>
+        </ol>
+
+        <section id="screen-email" class="screen" hidden>
+          <div class="single-panel">
+            <div class="panel-heading">
+              <p class="section-note">시작하기</p>
+              <h2>받을 이메일 주소를 알려주세요</h2>
+              <p>주소를 확인하는 링크를 보냅니다. 확인이 끝나면 일기를 쓸 수 있어요.</p>
+            </div>
+            <form id="email-form" class="stack-form">
+              <label for="email-input">이메일 주소</label>
+              <input id="email-input" name="email" type="email" autocomplete="email" placeholder="name@example.com" required />
+              <button id="email-submit" class="primary-button" type="submit">확인 링크 받기</button>
+            </form>
+            <p id="email-help" class="helper-text">일기와 대화는 확인된 주소와 연결해 안전하게 보관합니다.</p>
+          </div>
+        </section>
+
+        <section id="screen-diary" class="screen" hidden>
+          <div class="writing-layout">
+            <div class="writing-intro">
+              <p class="section-note">오늘의 기록</p>
+              <h2>어떤 하루였나요?</h2>
+              <p>기억에 남은 일, 마음에 걸리는 일, 내일 이어가고 싶은 일을 자유롭게 적어주세요.</p>
+              <p class="quiet-note">일기를 저장하면 이 내용을 바탕으로 대화가 시작됩니다.</p>
+            </div>
+            <form id="diary-form" class="paper-form">
+              <label class="sr-only" for="diary-input">오늘의 일기</label>
+              <textarea id="diary-input" name="diary" minlength="10" maxlength="10000" placeholder="오늘은…" required></textarea>
+              <div class="form-footer">
+                <span id="diary-count">0 / 10,000</span>
+                <button id="diary-submit" class="primary-button" type="submit">일기 저장하고 대화 시작</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section id="screen-chat" class="screen" hidden>
+          <div class="conversation-layout">
+            <aside class="diary-aside">
+              <div class="panel-heading compact">
+                <p class="section-note">오늘의 일기</p>
+                <h2>오늘 남긴 글</h2>
+              </div>
+              <p id="saved-diary" class="diary-text"></p>
+            </aside>
+            <div class="chat-area">
+              <div class="panel-heading compact">
+                <p class="section-note">내일의 계획</p>
+                <h2>함께 정해볼까요?</h2>
+                <p>대화가 끝나면 확정한 할 일을 아래에 적어주세요.</p>
+              </div>
+              <div id="messages" class="messages" role="log" aria-live="polite" aria-label="대화 내용"></div>
+              <form id="chat-form" class="chat-form">
+                <label class="sr-only" for="chat-input">메시지</label>
+                <input id="chat-input" name="message" type="text" maxlength="2000" placeholder="내일에 대해 이야기해 주세요" required />
+                <button id="chat-submit" class="primary-button small" type="submit">보내기</button>
+              </form>
+              <div class="plan-box">
+                <div class="plan-heading">
+                  <div>
+                    <p class="section-note">최종 확인</p>
+                    <h3>내일 할 일</h3>
+                  </div>
+                  <button id="suggest-plan" class="text-button" type="button">대화에서 가져오기</button>
+                </div>
+                <label class="sr-only" for="plan-input">내일 할 일 목록</label>
+                <textarea id="plan-input" maxlength="4000" placeholder="예: 오전에 담당자에게 연락하기&#10;저녁에는 20분 산책하기"></textarea>
+                <p class="helper-text">메일에는 여기에 적고 확인한 내용만 담깁니다.</p>
+                <div class="plan-actions">
+                  <button id="delete-chat" class="text-button danger" type="button">기록 삭제</button>
+                  <button id="preview-submit" class="primary-button" type="button">메일 미리보기</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="screen-preview" class="screen" hidden>
+          <div class="single-panel preview-panel">
+            <div class="panel-heading">
+              <p class="section-note">보내기 전 확인</p>
+              <h2>이 내용으로 메일을 보낼까요?</h2>
+              <p>받는 주소 <strong id="preview-email"></strong></p>
+            </div>
+            <div class="mail-preview">
+              <p class="mail-subject">제목 · 오늘의 일기와 내일 할 일</p>
+              <pre id="preview-body"></pre>
+            </div>
+            <div class="preview-actions">
+              <button id="back-to-chat" class="secondary-button" type="button">계획 수정</button>
+              <button id="send-submit" class="primary-button" type="button">이 주소로 메일 보내기</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="screen-sent" class="screen" hidden>
+          <div class="single-panel sent-panel">
+            <span class="sent-symbol" aria-hidden="true">✓</span>
+            <h2>메일을 보냈어요</h2>
+            <p><strong id="sent-email"></strong> 주소의 받은편지함을 확인해 주세요.</p>
+            <div class="sent-actions">
+              <button id="new-diary" class="primary-button" type="button">새 일기 쓰기</button>
+              <button id="delete-sent" class="text-button danger" type="button">이 기록 삭제</button>
+            </div>
+          </div>
+        </section>
+      </main>
+      <p id="app-status" class="status-message" role="status" aria-live="polite"></p>
+      <footer class="site-footer">오늘의 기록이 내일의 방향이 되도록.</footer>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
