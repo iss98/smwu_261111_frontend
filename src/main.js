@@ -1,13 +1,13 @@
 import './style.css';
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
-const authTokenKey = 'diaryAuthToken';
+const guestTokenKey = 'diaryGuestToken';
+const sessionIdKey = 'diarySessionId';
 const $ = (id) => document.getElementById(id);
 let currentSession = null;
 let busy = false;
 
-const screens = ['email', 'diary', 'chat', 'preview', 'sent'];
-const stepForScreen = { email: 'email', diary: 'diary', chat: 'chat', preview: 'preview', sent: 'preview' };
+const screens = ['diary', 'chat', 'complete'];
 
 function setStatus(message = '', isError = false) {
   const node = $('app-status');
@@ -22,13 +22,12 @@ function setBusy(value, label = '') {
   document.querySelectorAll('button, input, textarea').forEach((element) => {
     element.disabled = value;
   });
-  if (!value && currentSession?.status === 'send_unknown') $('send-submit').disabled = true;
   if (label) setStatus(label);
 }
 
 function showScreen(name) {
   screens.forEach((screen) => { $(`screen-${screen}`).hidden = screen !== name; });
-  const activeIndex = ['email', 'diary', 'chat', 'preview'].indexOf(stepForScreen[name]);
+  const activeIndex = screens.indexOf(name);
   document.querySelectorAll('.steps li').forEach((item, index) => {
     item.classList.toggle('active', index === activeIndex);
     item.classList.toggle('complete', index < activeIndex);
@@ -55,26 +54,18 @@ function renderMessages(messages) {
 
 function renderSession(session) {
   currentSession = session;
-  localStorage.setItem('diarySessionId', session.id);
+  localStorage.setItem(sessionIdKey, session.id);
   $('saved-diary').textContent = session.diary;
-  $('plan-input').value = session.tasks || $('plan-input').value;
-  $('preview-email').textContent = session.email;
-  $('sent-email').textContent = session.email;
-  $('preview-body').textContent = session.email_body || '';
+  $('plan-input').value = session.tasks || '';
+  $('complete-diary').textContent = session.diary;
+  $('complete-tasks').textContent = session.tasks || '';
   renderMessages(session.messages);
-  if (session.status === 'sent') showScreen('sent');
-  else if (session.status === 'preview') showScreen('preview');
-  else if (session.status === 'chat') showScreen('chat');
-  else {
-    showScreen('preview');
-    setStatus('메일 발송 상태를 확인할 수 없습니다. 중복 발송을 막기 위해 다시 보내지 않습니다.', true);
-    $('send-submit').disabled = true;
-  }
+  showScreen(session.status === 'complete' ? 'complete' : 'chat');
 }
 
 async function api(path, options = {}, authenticated = true) {
-  const token = sessionStorage.getItem(authTokenKey);
-  if (authenticated && !token) throw new Error('이메일 확인이 필요합니다.');
+  const token = localStorage.getItem(guestTokenKey);
+  if (authenticated && !token) throw new Error('방문 정보를 만들지 못했습니다. 새로고침해 주세요.');
   const response = await fetch(`${apiBase}${path}`, {
     ...options,
     headers: {
@@ -107,85 +98,74 @@ async function runAction(action, waitingText) {
   }
 }
 
+async function refreshRecords() {
+  const result = await api('/api/sessions');
+  const list = $('recent-list');
+  list.replaceChildren();
+  $('recent-records').hidden = result.sessions.length === 0;
+  for (const item of result.sessions) {
+    const button = document.createElement('button');
+    button.className = 'recent-item';
+    button.type = 'button';
+    const date = document.createElement('span');
+    date.textContent = item.created_at
+      ? new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(new Date(item.created_at))
+      : '저장한 기록';
+    const title = document.createElement('strong');
+    title.textContent = item.diary_excerpt || '오늘의 일기';
+    button.append(date, title);
+    button.addEventListener('click', () => runAction(async () => {
+      renderSession(await api(`/api/sessions/${item.id}`));
+    }, '기록을 불러오고 있습니다…'));
+    list.append(button);
+  }
+}
+
 async function restoreSession() {
-  const sessionId = localStorage.getItem('diarySessionId');
+  const sessionId = localStorage.getItem(sessionIdKey);
   if (!sessionId) {
     showScreen('diary');
+    await refreshRecords();
     return;
   }
   try {
     renderSession(await api(`/api/sessions/${sessionId}`));
   } catch {
-    localStorage.removeItem('diarySessionId');
+    localStorage.removeItem(sessionIdKey);
     showScreen('diary');
+    await refreshRecords();
   }
 }
 
-function setAccount(email = '') {
-  $('account-email').textContent = email;
-  $('sign-out').hidden = !email;
-}
-
-async function setupAuth() {
-  const loginToken = new URLSearchParams(window.location.hash.slice(1)).get('login_token');
-  if (loginToken) {
-    window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-    sessionStorage.removeItem(authTokenKey);
-    setAccount();
-    showScreen('email');
-    await runAction(async () => {
-      const result = await api('/api/auth/verify-link', {
-        method: 'POST', body: JSON.stringify({ token: loginToken }),
-      }, false);
-      sessionStorage.setItem(authTokenKey, result.token);
-      setAccount(result.email);
-      await restoreSession();
-    }, '이메일을 확인하고 있습니다…');
-    return;
-  }
-  if (!sessionStorage.getItem(authTokenKey)) {
-    setAccount();
-    showScreen('email');
-    return;
-  }
+async function setupGuest() {
+  setBusy(true, '기록을 준비하고 있습니다…');
   try {
-    const result = await api('/api/auth/me');
-    setAccount(result.email);
+    if (localStorage.getItem(guestTokenKey)) {
+      try {
+        await api('/api/auth/me');
+      } catch {
+        localStorage.removeItem(guestTokenKey);
+        localStorage.removeItem(sessionIdKey);
+      }
+    }
+    if (!localStorage.getItem(guestTokenKey)) {
+      const result = await api('/api/auth/guest', { method: 'POST' }, false);
+      localStorage.setItem(guestTokenKey, result.token);
+    }
     await restoreSession();
-  } catch {
-    sessionStorage.removeItem(authTokenKey);
-    localStorage.removeItem('diarySessionId');
-    setAccount();
-    showScreen('email');
+    setStatus();
+  } catch (error) {
+    showScreen('diary');
+    setStatus(error.message || '기록을 준비하지 못했습니다. 새로고침해 주세요.', true);
+  } finally {
+    setBusy(false);
   }
 }
 
 $('today-date').textContent = new Intl.DateTimeFormat('ko-KR', {
   year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
 }).format(new Date());
-setStatus();
-setupAuth();
-
-$('email-form').addEventListener('submit', (event) => {
-  event.preventDefault();
-  runAction(async () => {
-    const email = $('email-input').value.trim();
-    await api('/api/auth/request-link', {
-      method: 'POST', body: JSON.stringify({ email }),
-    }, false);
-    $('email-help').textContent = `${email} 주소로 확인 링크를 보냈습니다. 메일을 열어 계속해 주세요.`;
-  }, '확인 링크를 보내고 있습니다…');
-});
-
-$('sign-out').addEventListener('click', () => runAction(async () => {
-  try { await api('/api/auth/logout', { method: 'POST' }); } finally {
-    sessionStorage.removeItem(authTokenKey);
-  }
-  localStorage.removeItem('diarySessionId');
-  currentSession = null;
-  setAccount();
-  showScreen('email');
-}, '로그아웃하고 있습니다…'));
+setupGuest();
 
 $('diary-input').addEventListener('input', () => {
   $('diary-count').textContent = `${$('diary-input').value.length.toLocaleString('ko-KR')} / 10,000`;
@@ -194,6 +174,7 @@ $('diary-input').addEventListener('input', () => {
 $('diary-form').addEventListener('submit', (event) => {
   event.preventDefault();
   runAction(async () => {
+    $('plan-input').value = '';
     const session = await api('/api/sessions', {
       method: 'POST', body: JSON.stringify({ diary: $('diary-input').value.trim() }),
     });
@@ -224,50 +205,41 @@ $('suggest-plan').addEventListener('click', () => runAction(async () => {
   $('plan-input').focus();
 }, '대화에서 할 일을 정리하고 있습니다…'));
 
-$('preview-submit').addEventListener('click', () => runAction(async () => {
+$('save-plan').addEventListener('click', () => runAction(async () => {
   const tasks = $('plan-input').value.trim();
   if (!tasks) throw new Error('내일 할 일을 입력하거나 대화에서 가져와 주세요.');
-  const session = await api(`/api/sessions/${currentSession.id}/preview`, {
+  const session = await api(`/api/sessions/${currentSession.id}/plan`, {
     method: 'POST', body: JSON.stringify({ tasks }),
   });
   renderSession(session);
-}, '메일 내용을 정리하고 있습니다…'));
+}, '내일 할 일을 저장하고 있습니다…'));
 
 $('back-to-chat').addEventListener('click', () => {
   showScreen('chat');
   $('plan-input').focus();
 });
 
-$('send-submit').addEventListener('click', () => runAction(async () => {
-  try {
-    const result = await api(`/api/sessions/${currentSession.id}/send`, { method: 'POST' });
-    if (result.status === 'sent') {
-      currentSession.status = 'sent';
-      showScreen('sent');
-    }
-  } catch (error) {
-    try { renderSession(await api(`/api/sessions/${currentSession.id}`)); } catch { /* Keep original error. */ }
-    throw error;
-  }
-}, '메일을 보내고 있습니다…'));
-
 async function deleteCurrentSession() {
   if (!currentSession || !window.confirm('이 일기와 대화 기록을 삭제할까요?')) return;
   await runAction(async () => {
     await api(`/api/sessions/${currentSession.id}`, { method: 'DELETE' });
-    localStorage.removeItem('diarySessionId');
+    localStorage.removeItem(sessionIdKey);
     currentSession = null;
     $('diary-input').value = '';
+    $('diary-count').textContent = '0 / 10,000';
     $('plan-input').value = '';
     showScreen('diary');
+    await refreshRecords();
   }, '기록을 삭제하고 있습니다…');
 }
 $('delete-chat').addEventListener('click', deleteCurrentSession);
-$('delete-sent').addEventListener('click', deleteCurrentSession);
-$('new-diary').addEventListener('click', () => {
-  localStorage.removeItem('diarySessionId');
+$('delete-complete').addEventListener('click', deleteCurrentSession);
+$('new-diary').addEventListener('click', () => runAction(async () => {
+  localStorage.removeItem(sessionIdKey);
   currentSession = null;
   $('diary-input').value = '';
+  $('diary-count').textContent = '0 / 10,000';
   $('plan-input').value = '';
   showScreen('diary');
-});
+  await refreshRecords();
+}, '이전 기록을 불러오고 있습니다…'));
